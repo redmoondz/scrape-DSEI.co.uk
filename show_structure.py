@@ -3,6 +3,7 @@
 Display the new professional project structure
 """
 
+
 def show_structure():
     structure = """
 🏗️  PROFESSIONAL PROJECT STRUCTURE COMPLETED!
