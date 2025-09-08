@@ -77,6 +77,8 @@ class DSEICompanyScraper:
         # Track existing companies to avoid duplicates
         self.existing_companies = set()
         self.output_file_path = None
+        self.last_company_skipped = False  # Track if last company was skipped due to duplicate
+        self.processed_slugs = set()  # Track processed slugs during current session
     
     def _setup_logging(self):
         """Set up logging configuration"""
@@ -208,7 +210,7 @@ class DSEICompanyScraper:
             # Find all company blocks using selector from config
             company_slugs = []
             company_links = soup.find_all('a', class_='js-librarylink-entry')
-            
+
             for link in company_links:
                 if isinstance(link, Tag):
                     href = link.get('href', '') or ''
@@ -219,9 +221,20 @@ class DSEICompanyScraper:
                             slug = match.group(1)
                             company_slugs.append(slug)
                             self.logger.debug(f"Found company slug: {slug}")
-            
-            self.logger.info(f"Found {len(company_slugs)} companies on page {page_number}")
-            return company_slugs
+
+            # Remove duplicates while preserving order
+            unique_slugs = []
+            seen_slugs = set()
+            for slug in company_slugs:
+                if slug not in seen_slugs:
+                    unique_slugs.append(slug)
+                    seen_slugs.add(slug)
+
+            if len(company_slugs) != len(unique_slugs):
+                self.logger.info(f"Removed {len(company_slugs) - len(unique_slugs)} duplicate slugs on page {page_number}")
+
+            self.logger.info(f"Found {len(unique_slugs)} unique companies on page {page_number}")
+            return unique_slugs
             
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error fetching page {page_number}: {e}")
@@ -241,6 +254,9 @@ class DSEICompanyScraper:
         Returns:
             Dictionary with company details or None if failed
         """
+        # Reset skip flag at the start of each company processing
+        self.last_company_skipped = False
+        
         url = self.company_detail_url_template.format(
             company_slug=quote(company_slug), 
             page=page_number
@@ -265,6 +281,7 @@ class DSEICompanyScraper:
             # Check if company already exists - skip if it does
             if company_name and self.is_company_already_scraped(company_name):
                 self.logger.info(f"⏭️  Skipping {company_name} - already exists in output file")
+                self.last_company_skipped = True
                 return None
             
             # Extract tags/categories using selector from config
@@ -415,8 +432,16 @@ class DSEICompanyScraper:
             
             # STEP 2: Process each company
             for slug in company_slugs:
+                # Skip if this slug was already processed in current session
+                if slug in self.processed_slugs:
+                    self.logger.info(f"⏭️  Skipping slug '{slug}' - already processed in current session")
+                    continue
+                
                 # Add delay to be respectful to the server
                 time.sleep(self.delays.get('between_companies', 1))
+                
+                # Mark slug as processed
+                self.processed_slugs.add(slug)
                 
                 company_details = self.get_company_details(slug, current_page)
                 if company_details:
@@ -425,7 +450,10 @@ class DSEICompanyScraper:
                     self.add_company_to_existing(company_details['company_name'])
                     self.logger.info(f"Processed: {company_details['company_name']}")
                 else:
-                    self.logger.warning(f"Failed to get details for slug: {slug}")
+                    # Only log warning if the company wasn't skipped due to duplicate
+                    if not self.last_company_skipped:
+                        self.logger.warning(f"Failed to get details for slug: {slug}")
+                    # If it was skipped, we already logged the skip message, so no additional message needed
             
             # Check if there's a next page (flowchart decision point)
             if not self.has_next_page(current_page):

@@ -45,8 +45,8 @@ class Config:
             "list_url_template": "https://www.dsei.co.uk/visit/exhibiting-companies?&page={page}&searchgroup=65207D8C-exhibitors-list",
             "company_detail_url_template": "https://www.dsei.co.uk/exhibitors-list/{company_slug}?=&page={page}&searchgroup=libraryentry-exhibitors-list",
             "delays": {
-                "between_companies": 1,
-                "between_pages": 2
+                "between_companies": 0.2,
+                "between_pages": 1
             },
             "timeouts": {
                 "request_timeout": 30
