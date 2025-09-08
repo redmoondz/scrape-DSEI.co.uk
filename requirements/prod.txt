@@ -1,0 +1,5 @@
+# Production requirements
+-r base.txt
+
+# Production-specific packages
+gunicorn>=20.1.0

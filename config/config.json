@@ -1,0 +1,23 @@
+{
+    "base_url": "https://www.dsei.co.uk",
+    "list_url_template": "https://www.dsei.co.uk/visit/exhibiting-companies?&page={page}&searchgroup=65207D8C-exhibitors-list",
+    "company_detail_url_template": "https://www.dsei.co.uk/exhibitors-list/{company_slug}?=&page={page}&searchgroup=libraryentry-exhibitors-list",
+    "delays": {
+        "between_companies": 1,
+        "between_pages": 2
+    },
+    "timeouts": {
+        "request_timeout": 30
+    },
+    "output": {
+        "csv_filename": "dsei_companies.csv",
+        "log_filename": "scraper.log"
+    },
+    "selectors": {
+        "company_links": "a.js-librarylink-entry",
+        "company_title": "h1.m-exhibitor-entry__item__header__title",
+        "categories": "li.m-exhibitor-entry__item__header__categories__item",
+        "description": "div.m-exhibitor-entry__item__body__description"
+    },
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0"
+}
