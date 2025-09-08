@@ -73,6 +73,10 @@ class DSEICompanyScraper:
         self.timeouts = self.config.get_timeouts()
         self.selectors = self.config.get_selectors()
         self.max_retries = 3
+        
+        # Track existing companies to avoid duplicates
+        self.existing_companies = set()
+        self.output_file_path = None
     
     def _setup_logging(self):
         """Set up logging configuration"""
@@ -119,6 +123,67 @@ class DSEICompanyScraper:
                     self.logger.error(f"All {self.max_retries} attempts failed for {url}")
         
         return None
+    
+    def load_existing_companies(self, file_path: Optional[Path] = None) -> int:
+        """
+        Load existing companies from CSV file to avoid duplicates
+        
+        Args:
+            file_path: Path to existing CSV file. If None, uses default output path.
+            
+        Returns:
+            Number of existing companies loaded
+        """
+        if file_path is None:
+            # Use default output path
+            data_dir = self.project_root / "data" / "processed"
+            file_path = data_dir / self.config.get_output_config().get('csv_filename', 'dsei_companies.csv')
+        
+        # Store the output file path for later use
+        self.output_file_path = file_path
+        
+        if not file_path.exists():
+            self.logger.info(f"No existing file found at {file_path}. Starting fresh.")
+            return 0
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    company_name = row.get('company_name', '').strip()
+                    if company_name:
+                        # Use company name as unique identifier
+                        self.existing_companies.add(company_name.lower())
+            
+            count = len(self.existing_companies)
+            self.logger.info(f"Loaded {count} existing companies from {file_path}")
+            return count
+            
+        except Exception as e:
+            self.logger.error(f"Error loading existing companies from {file_path}: {e}")
+            return 0
+    
+    def is_company_already_scraped(self, company_name: str) -> bool:
+        """
+        Check if a company has already been scraped
+        
+        Args:
+            company_name: Name of the company to check
+            
+        Returns:
+            True if company already exists, False otherwise
+        """
+        return company_name.lower().strip() in self.existing_companies
+    
+    def add_company_to_existing(self, company_name: str):
+        """
+        Add a company to the existing companies set
+        
+        Args:
+            company_name: Name of the company to add
+        """
+        if company_name and company_name.strip():
+            self.existing_companies.add(company_name.lower().strip())
     
     def get_company_slugs_from_page(self, page_number: int) -> List[str]:
         """
@@ -196,6 +261,11 @@ class DSEICompanyScraper:
             title_element = soup.select_one(title_selector)
             if title_element:
                 company_name = title_element.get_text(strip=True)
+            
+            # Check if company already exists - skip if it does
+            if company_name and self.is_company_already_scraped(company_name):
+                self.logger.info(f"⏭️  Skipping {company_name} - already exists in output file")
+                return None
             
             # Extract tags/categories using selector from config
             tags = []
@@ -290,15 +360,25 @@ class DSEICompanyScraper:
             file_path = Path(filename)
         
         try:
-            with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
+            # Check if file exists to determine if we need to write header
+            file_exists = file_path.exists() and file_path.stat().st_size > 0
+            
+            # Open in append mode if file exists, write mode if new
+            mode = 'a' if file_exists else 'w'
+            
+            with open(file_path, mode, newline='', encoding='utf-8') as csvfile:
                 fieldnames = ['company_name', 'tags', 'overview', 'website']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 
-                writer.writeheader()
+                # Only write header if file is new/empty
+                if not file_exists:
+                    writer.writeheader()
+                
                 for company in self.companies_data:
                     writer.writerow(company)
             
-            self.logger.info(f"Saved {len(self.companies_data)} companies to {file_path}")
+            action = "Appended" if file_exists else "Saved"
+            self.logger.info(f"{action} {len(self.companies_data)} companies to {file_path}")
             
         except Exception as e:
             self.logger.error(f"Error saving to CSV: {e}")
@@ -312,6 +392,9 @@ class DSEICompanyScraper:
             max_pages: Maximum number of pages to scrape (None for all)
         """
         self.logger.info("Starting DSEI company scraper")
+        
+        # Load existing companies to avoid duplicates
+        self.load_existing_companies()
         
         current_page = start_page
         pages_scraped = 0
@@ -338,6 +421,8 @@ class DSEICompanyScraper:
                 company_details = self.get_company_details(slug, current_page)
                 if company_details:
                     self.companies_data.append(company_details)
+                    # Add to existing companies set to prevent re-scraping
+                    self.add_company_to_existing(company_details['company_name'])
                     self.logger.info(f"Processed: {company_details['company_name']}")
                 else:
                     self.logger.warning(f"Failed to get details for slug: {slug}")
