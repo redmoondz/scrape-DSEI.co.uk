@@ -9,7 +9,7 @@ This scraper follows the flowchart logic:
 4. Makes HTTP requests to the API for additional company info
 5. Saves the data and moves to the next page
 
-Output CSV format: company_name, tags, overview, website
+Output CSV format: company_name, slug_name, url, stand, tags, overview, website
 """
 
 import requests
@@ -187,15 +187,15 @@ class DSEICompanyScraper:
         if company_name and company_name.strip():
             self.existing_companies.add(company_name.lower().strip())
     
-    def get_company_slugs_from_page(self, page_number: int) -> List[str]:
+    def get_company_slugs_from_page(self, page_number: int) -> List[Dict[str, str]]:
         """
-        STEP 1: Get all company slugs from a listing page
+        STEP 1: Get all company information from a listing page
         
         Args:
             page_number: The page number to scrape
             
         Returns:
-            List of company slugs found on the page
+            List of dictionaries containing company slug and stand info
         """
         url = self.list_url_template.format(page=page_number)
         self.logger.info(f"Fetching page {page_number}: {url}")
@@ -207,34 +207,53 @@ class DSEICompanyScraper:
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Find all company blocks using selector from config
-            company_slugs = []
-            company_links = soup.find_all('a', class_='js-librarylink-entry')
+            # Find all company blocks using main container
+            companies_info = []
+            # Find all main company containers first
+            company_containers = soup.find_all('li', class_='m-exhibitors-list__items__item')
 
-            for link in company_links:
-                if isinstance(link, Tag):
-                    href = link.get('href', '') or ''
-                    # Extract slug from href like "javascript:openRemoteModal('exhibitors-list/wind-river','ajax'..."
-                    if isinstance(href, str):
-                        match = re.search(r"'exhibitors-list/([^']+)'", href)
-                        if match:
-                            slug = match.group(1)
-                            company_slugs.append(slug)
-                            self.logger.debug(f"Found company slug: {slug}")
+            for container in company_containers:
+                if isinstance(container, Tag):
+                    # Find the link inside this container
+                    link = container.find('a', class_='js-librarylink-entry')
+                    if link and isinstance(link, Tag):
+                        href = link.get('href', '') or ''
+                        # Extract slug from href like "javascript:openRemoteModal('exhibitors-list/wind-river','ajax'..."
+                        if isinstance(href, str):
+                            match = re.search(r"'exhibitors-list/([^']+)'", href)
+                            if match:
+                                slug = match.group(1)
+                                
+                                # Find stand information in the same container
+                                stand = ""
+                                stand_element = container.find('div', class_='m-exhibitors-list__items__item__header__meta__stand')
+                                if stand_element:
+                                    stand_text = stand_element.get_text(strip=True)
+                                    # Extract just the stand number (remove "Stand: " prefix)
+                                    if stand_text.startswith('Stand:'):
+                                        stand = stand_text.replace('Stand:', '').strip()
+                                    else:
+                                        stand = stand_text
+                                
+                                companies_info.append({
+                                    'slug': slug,
+                                    'stand': stand
+                                })
+                                self.logger.debug(f"Found company slug: {slug}, stand: {stand}")
 
             # Remove duplicates while preserving order
-            unique_slugs = []
+            unique_companies = []
             seen_slugs = set()
-            for slug in company_slugs:
-                if slug not in seen_slugs:
-                    unique_slugs.append(slug)
-                    seen_slugs.add(slug)
+            for company in companies_info:
+                if company['slug'] not in seen_slugs:
+                    unique_companies.append(company)
+                    seen_slugs.add(company['slug'])
 
-            if len(company_slugs) != len(unique_slugs):
-                self.logger.info(f"Removed {len(company_slugs) - len(unique_slugs)} duplicate slugs on page {page_number}")
+            if len(companies_info) != len(unique_companies):
+                self.logger.info(f"Removed {len(companies_info) - len(unique_companies)} duplicate slugs on page {page_number}")
 
-            self.logger.info(f"Found {len(unique_slugs)} unique companies on page {page_number}")
-            return unique_slugs
+            self.logger.info(f"Found {len(unique_companies)} unique companies on page {page_number}")
+            return unique_companies
             
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error fetching page {page_number}: {e}")
@@ -243,13 +262,14 @@ class DSEICompanyScraper:
             self.logger.error(f"Unexpected error processing page {page_number}: {e}")
             return []
     
-    def get_company_details(self, company_slug: str, page_number: int) -> Optional[Dict[str, str]]:
+    def get_company_details(self, company_slug: str, page_number: int, stand: str = "") -> Optional[Dict[str, str]]:
         """
         STEP 2: Get detailed company information using the company slug
         
         Args:
             company_slug: The company's URL slug
             page_number: Current page number for the API call
+            stand: Stand information from the listing page
             
         Returns:
             Dictionary with company details or None if failed
@@ -311,8 +331,17 @@ class DSEICompanyScraper:
                         website = href
                         break
             
+            # Generate full company URL
+            company_url = self.company_detail_url_template.format(
+                company_slug=quote(company_slug), 
+                page=page_number
+            )
+            
             company_data = {
                 'company_name': company_name,
+                'slug_name': company_slug,
+                'url': company_url,
+                'stand': stand,
                 'tags': '; '.join(tags),  # Join tags with semicolon
                 'overview': overview.replace('\n', ' ').replace('\r', ' '),  # Clean line breaks
                 'website': website
@@ -384,7 +413,7 @@ class DSEICompanyScraper:
             mode = 'a' if file_exists else 'w'
             
             with open(file_path, mode, newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['company_name', 'tags', 'overview', 'website']
+                fieldnames = ['company_name', 'slug_name', 'url', 'stand', 'tags', 'overview', 'website']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 
                 # Only write header if file is new/empty
@@ -423,15 +452,18 @@ class DSEICompanyScraper:
                 break
             
             # STEP 1: Get company slugs from current page
-            company_slugs = self.get_company_slugs_from_page(current_page)
+            companies_info = self.get_company_slugs_from_page(current_page)
             
             # Check if page has companies (flowchart decision point)
-            if not company_slugs:
+            if not companies_info:
                 self.logger.info(f"No companies found on page {current_page}. Parsing completed.")
                 break
             
             # STEP 2: Process each company
-            for slug in company_slugs:
+            for company_info in companies_info:
+                slug = company_info['slug']
+                stand = company_info['stand']
+                
                 # Skip if this slug was already processed in current session
                 if slug in self.processed_slugs:
                     self.logger.info(f"⏭️  Skipping slug '{slug}' - already processed in current session")
@@ -443,7 +475,7 @@ class DSEICompanyScraper:
                 # Mark slug as processed
                 self.processed_slugs.add(slug)
                 
-                company_details = self.get_company_details(slug, current_page)
+                company_details = self.get_company_details(slug, current_page, stand)
                 if company_details:
                     self.companies_data.append(company_details)
                     # Add to existing companies set to prevent re-scraping

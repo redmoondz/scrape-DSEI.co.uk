@@ -45,8 +45,8 @@ class Config:
             "list_url_template": "https://www.dsei.co.uk/visit/exhibiting-companies?&page={page}&searchgroup=65207D8C-exhibitors-list",
             "company_detail_url_template": "https://www.dsei.co.uk/exhibitors-list/{company_slug}?=&page={page}&searchgroup=libraryentry-exhibitors-list",
             "delays": {
-                "between_companies": 0.2,
-                "between_pages": 1
+                "between_companies": 0 ,
+                "between_pages": 0
             },
             "timeouts": {
                 "request_timeout": 30
@@ -59,7 +59,8 @@ class Config:
                 "company_links": "a.js-librarylink-entry",
                 "company_title": "h1.m-exhibitor-entry__item__header__title",
                 "categories": "li.m-exhibitor-entry__item__header__categories__item",
-                "description": "div.m-exhibitor-entry__item__body__description"
+                "description": "div.m-exhibitor-entry__item__body__description",
+                "stand": "div.m-exhibitors-list__items__item__header__meta__stand"
             },
             "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0"
         }
