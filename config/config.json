@@ -1,10 +1,17 @@
 {
     "base_url": "https://www.dsei.co.uk",
-    "list_url_template": "https://www.dsei.co.uk/visit/exhibiting-companies?&page={page}&searchgroup=65207D8C-exhibitors-list",
+    "list_url_template": "https://www.dsei.co.uk/visit/exhibiting-companies??&page={page}&categories=c2204a53-7dc2-11f0-95a806bd0f937899&categories=bf4ed06e-7dc1-11f0-95a806bd0f937899&categories=c220c193-7dc2-11f0-95a806bd0f937899&categories=c220fae9-7dc2-11f0-95a806bd0f937899&searchgroup=65207D8C-exhibitors-list",
     "company_detail_url_template": "https://www.dsei.co.uk/exhibitors-list/{company_slug}?=&page={page}&searchgroup=libraryentry-exhibitors-list",
     "delays": {
-        "between_companies": 1,
-        "between_pages": 2
+        "between_companies": 0.1,
+        "between_pages": 1
+    },
+    "async_config": {
+        "max_concurrent_tasks": 15,
+        "connection_pool_size": 20,
+        "per_host_limit": 10,
+        "connection_timeout": 10,
+        "read_timeout": 30
     },
     "timeouts": {
         "request_timeout": 30

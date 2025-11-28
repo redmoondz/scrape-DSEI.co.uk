@@ -48,6 +48,13 @@ class Config:
                 "between_companies": 0 ,
                 "between_pages": 0
             },
+            "async_config": {
+                "max_concurrent_tasks": 15,
+                "connection_pool_size": 20,
+                "per_host_limit": 10,
+                "connection_timeout": 10,
+                "read_timeout": 30
+            },
             "timeouts": {
                 "request_timeout": 30
             },
@@ -109,6 +116,10 @@ class Config:
     def get_user_agent(self) -> str:
         """Get user agent string"""
         return self.get('user_agent')
+    
+    def get_async_config(self) -> Dict[str, int]:
+        """Get asynchronous configuration settings"""
+        return self.get('async_config', {})
     
     @property
     def all(self) -> Dict[str, Any]:
